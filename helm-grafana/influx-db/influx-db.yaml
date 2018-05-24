@@ -1,0 +1,130 @@
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: kube-system-influxdb-pv
+  labels:
+    kubernetes.io/cluster-service: "true"
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /local/share/influxdb
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: kube-system-influxdb-pvc
+  namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+kind: PersistentVolume
+apiVersion: v1
+metadata:
+  name: kube-system-grafana-pv
+  labels:
+    kubernetes.io/cluster-service: "true"
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /local/share/grafana
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: kube-system-grafana-pvc
+  namespace: kube-system
+  labels:
+    kubernetes.io/cluster-service: "true"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: monitoring-influxdb-grafana-v4
+  namespace: kube-system
+  labels: 
+    k8s-app: influxGrafana
+    version: v4
+    kubernetes.io/cluster-service: "true"
+spec: 
+  replicas: 1
+  selector: 
+    matchLabels:
+      k8s-app: influxGrafana
+      version: v4
+  template: 
+    metadata: 
+      labels: 
+        k8s-app: influxGrafana
+        version: v4
+        kubernetes.io/cluster-service: "true"
+    spec: 
+      containers: 
+        - image: gcr.io/google_containers/heapster_influxdb:v0.7
+          name: influxdb
+          resources:
+            # keep request = limit to keep this container in guaranteed class
+            limits:
+              cpu: 100m
+              memory: 500Mi
+            requests:
+              cpu: 100m
+              memory: 500Mi
+          env:
+            - name: TZ
+              value: America/Puerto_Rico  
+          ports: 
+            - containerPort: 8083
+            - containerPort: 8086
+          volumeMounts:
+          - name: influxdb-persistent-storage
+            mountPath: /data
+      volumes:
+         - name: influxdb-persistent-storage
+           persistentVolumeClaim:
+             claimName: kube-system-influxdb-pvc
+         - name: grafana-persistent-storage
+           persistentVolumeClaim:
+             claimName: kube-system-grafana-pvc
+      nodeSelector:
+        servertype: administration #Custom node label 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-influxdb
+  namespace: kube-system
+  labels: 
+    kubernetes.io/cluster-service: "true"
+    kubernetes.io/name: "InfluxDB"
+spec: 
+  type: NodePort
+  ports: 
+    - name: http
+      port: 8083
+      targetPort: 8083
+      nodePort: 30011
+    - name: api
+      port: 8086
+      targetPort: 8086
+      nodePort: 30012
+  selector: 
+    k8s-app: influxGrafana
+---
